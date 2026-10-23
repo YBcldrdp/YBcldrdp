@@ -1,0 +1,50 @@
+name: VS Code Tunnel (no ngrok needed)
+
+# RDP වලට වඩා ලේසි විකල්පයක්: browser එකෙන්ම Windows runner එකේ
+# VS Code + terminal එකක් පාවිච්චි කරන්න පුළුවන්.
+# ngrok account එකක් හෝ port tunnel එකක් ඕනම නෑ.
+on: [workflow_dispatch]
+
+concurrency:
+  group: vscode-tunnel
+  cancel-in-progress: false
+
+jobs:
+  tunnel:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Download VS Code CLI
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64" -OutFile vscode_cli.tar.gz
+          # Windows runner එකේ tar තියෙනවා (bsdtar)
+          tar -xzf vscode_cli.tar.gz
+
+      # Option A (නිර්දේශිතයි): PAT එකක් secret විදිහට දාන්න.
+      #   GitHub -> Settings -> Developer settings -> Personal access tokens (classic)
+      #   Scope: හුදෙක් "user:email" හෝ public_repo ප්‍රමාණවත්.
+      #   Repo Secrets එකට දාන්න: VS_CODE_PAT
+      - name: Login with PAT
+        shell: pwsh
+        env:
+          VS_CODE_PAT: ${{ secrets.VS_CODE_PAT }}
+        run: |
+          if ([string]::IsNullOrEmpty($Env:VS_CODE_PAT)) {
+            Write-Host "VS_CODE_PAT secret නෑ — Option B (device code) පාවිච්චි කරන්න."
+          } else {
+            $Env:VS_CODE_PAT | .\code.exe tunnel user login --provider github --stdin
+          }
+
+      - name: Start tunnel
+        shell: pwsh
+        run: |
+          # PAT එකක් නැත්නම් මේක device code එකක් log එකට දානවා —
+          # ඒක microsoft.com/devicelogin වලට ගිහින් ඇතුළත් කරන්න.
+          .\code.exe tunnel --accept-server-license-terms --name "campus-lab-$env:GITHUB_RUN_ID"
+
+      # tunnel එක background එකේ නවත්තන්න අවසාන step එකක් ඕන නම්:
+      # - name: Keep alive
+      #   shell: pwsh
+      #   run: Start-Sleep -Seconds 20400
